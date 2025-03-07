@@ -5,56 +5,148 @@
   <title>StampShot</title>
   <style>
     body {
-      width: 240px;
-      padding: 10px;
-      font-family: Arial, sans-serif;
+      width: auto;
+      min-width: 100px;
+      padding: 6px;
+      font-family: 'Roboto', Arial, sans-serif;
+      margin: 0;
+      color: #202124;
     }
-    button {
-      width: 100%;
-      padding: 8px;
-      background-color: #4285f4;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    button:hover {
-      background-color: #3367d6;
-    }
-    #status {
-      margin-top: 10px;
-      text-align: center;
-      color: #4CAF50;
-    }
-    .option {
-      margin-top: 10px;
+    .menu-item {
       display: flex;
       align-items: center;
+      width: 100%;
+      padding: 8px 10px;
+      background-color: transparent;
+      color: #202124;
+      border: none;
+      cursor: pointer;
+      text-align: left;
+      transition: background-color 0.15s;
+      margin: 2px 0;
+      border-radius: 4px;
+      font-size: 14px;
     }
-    .option input {
-      margin-right: 8px;
+    .menu-item:hover {
+      background-color: rgba(0, 0, 0, 0.12);
     }
-    #folderInfo {
+    .menu-item:active {
+      background-color: rgba(0, 0, 0, 0.18);
+    }
+    .menu-item.active {
+      background-color: rgba(26, 115, 232, 0.08);
+      color: #1a73e8;
+    }
+    .menu-item .icon {
+      margin-right: 12px;
+      color: #5f6368;
+      display: flex;
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+    .menu-item.active .icon {
+      color: #1a73e8;
+    }
+    .menu-item .text {
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #status {
+      margin-top: 6px;
+      text-align: center;
+      color: #1a73e8;
+      font-size: 12px;
+      min-height: 16px;
+      font-weight: 500;
+      padding-bottom: 2px;
+    }
+    .divider {
+      height: 1px;
+      background-color: #e0e0e0;
+      margin: 4px 0;
+    }
+    .section-title {
       font-size: 11px;
-      color: #666;
-      margin-top: 2px;
-      margin-left: 23px;
+      color: #5f6368;
+      padding: 4px 10px 2px;
+      margin: 0;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 500;
+    }
+    .radio-button {
+      position: relative;
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+      margin-right: 12px;
+      accent-color: #1a73e8;
+      flex-shrink: 0;
+    }
+    .dest-item {
+      padding: 6px 10px;
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      user-select: none;
+    }
+    .dest-item:hover {
+      background-color: rgba(0, 0, 0, 0.12);
+    }
+    .dest-text {
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      cursor: pointer;
+    }
+    input[type="radio"]:disabled + .dest-text {
+      color: #9AA0A6;
+      opacity: 0.7;
+      cursor: default;
+    }
+    .dest-item.disabled {
+      opacity: 0.7;
+      cursor: default;
     }
   </style>
 </head>
 <body>
-  <button id="captureBtn">Capture Screenshot</button>
-  <div class="option">
-    <input type="checkbox" id="fullPageOption" checked>
-    <label for="fullPageOption">Capture full page</label>
+  <button id="capturePageBtn" class="menu-item">
+    <div class="icon">
+      <img src="capture-viewport.svg" alt="Capture visible page" width="20" height="20">
+    </div>
+    <div class="text">Capture Visible Page</div>
+  </button>
+  
+  <button id="captureFullPageBtn" class="menu-item">
+    <div class="icon">
+      <img src="capture-fullpage.svg" alt="Capture full page" width="20" height="20">
+    </div>
+    <div class="text">Capture Full Page</div>
+  </button>
+  
+  <div class="divider"></div>
+  <div class="section-title">Save to</div>
+  
+  <div class="dest-item">
+    <input type="radio" name="destination" id="selectDestOption" class="radio-button">
+    <div class="dest-text">Select destination...</div>
   </div>
-  <div class="option">
-    <input type="checkbox" id="saveAsOption" checked>
-    <label for="saveAsOption">Ask where to save</label>
+  
+  <div class="dest-item">
+    <input type="radio" name="destination" id="currentFolderOption" class="radio-button">
+    <div class="dest-text" id="currentFolderText">Current folder</div>
   </div>
-  <div id="folderInfo">
-    If disabled, screenshots will be saved to the last used folder
+  
+  <div class="dest-item">
+    <input type="radio" name="destination" id="downloadsFolderOption" class="radio-button">
+    <div class="dest-text">Downloads folder</div>
   </div>
+  
   <div id="status"></div>
 
   <script src="popup.js"></script>

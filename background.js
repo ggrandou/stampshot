@@ -10,7 +10,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return false;
   }
   else if (request.action === "capture") {
-    captureScreenshot(request.fullPage, request.saveAs)
+    captureScreenshot(request.fullPage, request.saveAs, request.useDownloadsFolder)
       .then(result => {
         sendResponse(result);
       })
@@ -25,12 +25,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
     return true;
   }
+  else if (request.action === "getDefaultDownloadsFolder") {
+    getDefaultDownloadsFolder()
+      .then(folder => {
+        sendResponse({ success: true, folder: folder });
+      })
+      .catch(error => {
+        sendResponse({ success: false, message: error.message });
+      });
+    return true;
+  }
   else if (request.action === "getPreferences") {
-    chrome.storage.local.get(['lastDownloadFolder', 'saveAsEnabled', 'captureFullPage'], (result) => {
+    chrome.storage.local.get(['lastDownloadFolder', 'saveDestination'], (result) => {
       sendResponse({
         folder: result.lastDownloadFolder || "",
-        saveAsEnabled: result.saveAsEnabled,
-        captureFullPage: result.captureFullPage !== undefined ? result.captureFullPage : true
+        saveDestination: result.saveDestination || "select"
       });
     });
     return true;
@@ -38,7 +47,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 // Main capture function for both full page and visible screenshots
-async function captureScreenshot(fullPage = true, saveAs = true) {
+async function captureScreenshot(fullPage = true, saveAs = true, useDownloadsFolder = false) {
   try {
     const tabs = await getActiveTabs();
 
@@ -58,7 +67,7 @@ async function captureScreenshot(fullPage = true, saveAs = true) {
     const canvasWithHeader = await addHeaderToScreenshot(canvas, tab);
     const screenshotDataUrl = canvasWithHeader.toDataURL('image/png');
 
-    return await saveScreenshot(screenshotDataUrl, saveAs);
+    return await saveScreenshot(screenshotDataUrl, saveAs, useDownloadsFolder);
 
   } catch (error) {
     console.error("Screenshot capture failed:", error);
@@ -185,7 +194,7 @@ function getActiveTabs() {
   });
 }
 
-function downloadFile(url, filename, saveAs = true) {
+function downloadFile(url, filename, saveAs = true, useDownloadsFolder = false) {
   return new Promise((resolve, reject) => {
     chrome.storage.local.get(['lastDownloadFolder'], (result) => {
       let downloadOptions = {
@@ -194,19 +203,34 @@ function downloadFile(url, filename, saveAs = true) {
         saveAs: saveAs
       };
 
-      // Add folder path if saved and not using saveAs
-      if (!saveAs && result.lastDownloadFolder) {
+      // Si on utilise le dossier de téléchargement par défaut, ne pas spécifier de chemin
+      if (!saveAs && !useDownloadsFolder && result.lastDownloadFolder) {
         let folderPath = result.lastDownloadFolder;
 
-        // Convert absolute path to relative if needed
-        if (folderPath.startsWith('/')) {
-          const parts = folderPath.split('/');
-          folderPath = parts[parts.length - 1];
+        // Nettoyer le chemin du dossier pour qu'il soit utilisable
+        if (folderPath) {
+          // Supprimer les chemins absolus pour n'avoir que le dossier relatif
+          let parts = [];
+          if (folderPath.includes('/')) {
+            parts = folderPath.split('/');
+          } else if (folderPath.includes('\\')) {
+            parts = folderPath.split('\\');
+          }
+          
+          if (parts.length > 0) {
+            // Utiliser uniquement le dernier segment non vide du chemin
+            folderPath = parts.filter(part => part.trim() !== '').pop() || '';
+          }
+          
+          // Ajouter le séparateur à la fin si nécessaire
+          if (folderPath && !folderPath.endsWith('/')) {
+            folderPath = folderPath + '/';
+          }
+          
+          if (folderPath) {
+            downloadOptions.filename = folderPath + filename;
+          }
         }
-
-        // Ensure path ends with a slash
-        folderPath = folderPath.endsWith('/') ? folderPath : `${folderPath}/`;
-        downloadOptions.filename = `${folderPath}${filename}`;
       }
 
       chrome.downloads.download(downloadOptions, (downloadId) => {
@@ -447,7 +471,7 @@ function dataUrlToBlob(dataUrl) {
 }
 
 // Save screenshot to downloads folder
-async function saveScreenshot(dataUrl, saveAs = true) {
+async function saveScreenshot(dataUrl, saveAs = true, useDownloadsFolder = false) {
   const timestamp = new Date().toISOString().replace(/[-:.]/g, "").replace("T", "_").slice(0, 15);
   const filename = "screenshot_" + timestamp + ".png";
 
@@ -455,7 +479,16 @@ async function saveScreenshot(dataUrl, saveAs = true) {
   const blobUrl = URL.createObjectURL(blob);
 
   try {
-    const downloadId = await downloadFile(blobUrl, filename, saveAs);
+    let downloadId;
+    
+    if (useDownloadsFolder) {
+      // Utiliser le dossier de téléchargement par défaut
+      downloadId = await downloadFile(blobUrl, filename, false, true);
+    } else {
+      // Utiliser le dernier dossier ou la boîte de dialogue saveAs
+      downloadId = await downloadFile(blobUrl, filename, saveAs, false);
+    }
+    
     return { success: true, downloadId };
   } catch (error) {
     console.error("Error saving screenshot:", error);
@@ -500,6 +533,45 @@ function isInDownloadFolder(path, downloadRoot) {
   return path.startsWith(downloadRoot);
 }
 
+// Get default downloads folder
+function getDefaultDownloadsFolder() {
+  return new Promise((resolve, reject) => {
+    chrome.downloads.search({
+      limit: 1,
+      orderBy: ['-startTime']
+    }, (downloads) => {
+      if (chrome.runtime.lastError) {
+        reject(chrome.runtime.lastError);
+        return;
+      }
+      
+      if (downloads && downloads.length > 0) {
+        // Essayer d'extraire le chemin du dossier de téléchargement
+        const path = downloads[0].filename || '';
+        if (path) {
+          // Extraire le dossier de téléchargement du chemin
+          let downloadsPath = '';
+          if (path.includes('/')) {
+            const parts = path.split('/');
+            parts.pop(); // Retirer le nom de fichier
+            downloadsPath = parts.join('/');
+          } else if (path.includes('\\')) {
+            const parts = path.split('\\');
+            parts.pop(); // Retirer le nom de fichier
+            downloadsPath = parts.join('\\');
+          }
+          
+          resolve(downloadsPath);
+        } else {
+          resolve('');
+        }
+      } else {
+        resolve('');
+      }
+    });
+  });
+}
+
 // Listen for download completion
 chrome.downloads.onChanged.addListener((downloadDelta) => {
   chrome.storage.local.get(['pendingDownloadId'], (result) => {
@@ -525,7 +597,7 @@ chrome.downloads.onChanged.addListener((downloadDelta) => {
                 if (folderPath) {
                   chrome.storage.local.set({
                     lastDownloadFolder: folderPath,
-                    saveAsEnabled: false  // Auto-uncheck saveAs option
+                    saveDestination: 'current'  // Auto-select current folder option
                   });
                 }
               }
