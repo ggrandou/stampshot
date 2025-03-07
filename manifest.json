@@ -2,7 +2,7 @@
   "manifest_version": 2,
   "name": "StampShot",
   "version": "1.0",
-  "description": "Takes screenshots of the current page and saves them to downloads",
+  "description": "Takes screenshots with stamp header",
   "permissions": [
     "activeTab",
     "downloads",
