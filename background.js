@@ -67,7 +67,7 @@ async function captureScreenshot(fullPage = true, saveAs = true, useDownloadsFol
     const canvasWithHeader = await addHeaderToScreenshot(canvas, tab);
     const screenshotDataUrl = canvasWithHeader.toDataURL('image/png');
 
-    return await saveScreenshot(screenshotDataUrl, saveAs, useDownloadsFolder);
+    return await saveScreenshot(screenshotDataUrl, saveAs, useDownloadsFolder, tab.url);
 
   } catch (error) {
     console.error("Screenshot capture failed:", error);
@@ -216,17 +216,17 @@ function downloadFile(url, filename, saveAs = true, useDownloadsFolder = false) 
           } else if (folderPath.includes('\\')) {
             parts = folderPath.split('\\');
           }
-          
+
           if (parts.length > 0) {
             // Utiliser uniquement le dernier segment non vide du chemin
             folderPath = parts.filter(part => part.trim() !== '').pop() || '';
           }
-          
+
           // Ajouter le séparateur à la fin si nécessaire
           if (folderPath && !folderPath.endsWith('/')) {
             folderPath = folderPath + '/';
           }
-          
+
           if (folderPath) {
             downloadOptions.filename = folderPath + filename;
           }
@@ -470,17 +470,67 @@ function dataUrlToBlob(dataUrl) {
   return new Blob([ab], {type: mimeString});
 }
 
+// Nettoie l'URL pour un nom de fichier valide
+function cleanUrlForFilename(url, maxLength = 100) {
+  try {
+    // Extraire le domaine de l'URL
+    let hostname = "";
+    try {
+      const urlObj = new URL(url);
+      hostname = urlObj.hostname;
+
+      // Ajouter le chemin si présent, limité en longueur
+      if (urlObj.pathname && urlObj.pathname !== "/") {
+        let path = urlObj.pathname.replace(/^\//, "");
+        // Limite la longueur totale
+        const availableLength = maxLength - hostname.length - 1;
+        if (availableLength > 3 && path.length > availableLength) {
+          path = path.substring(0, availableLength);
+        }
+        hostname += "_" + path;
+      }
+    } catch (e) {
+      // En cas d'échec, utiliser l'URL brute
+      hostname = url;
+    }
+
+    // Nettoyer l'URL pour un nom de fichier valide
+    let cleanUrl = hostname
+      .replace(/^www\./, "")                    // Supprimer www.
+      .replace(/[^a-zA-Z0-9_\-.]/g, "_")       // Remplacer les caractères spéciaux par des underscores
+      .replace(/_{2,}/g, "_")                  // Réduire les underscores consécutifs
+      .replace(/^_+|_+$/g, "");                // Supprimer les underscores de début et fin
+
+    // Limiter la longueur totale
+    if (cleanUrl.length > maxLength) {
+      cleanUrl = cleanUrl.substring(0, maxLength);
+    }
+
+    return cleanUrl;
+  } catch (e) {
+    console.error("Error cleaning URL for filename:", e);
+    return "webpage";
+  }
+}
+
 // Save screenshot to downloads folder
-async function saveScreenshot(dataUrl, saveAs = true, useDownloadsFolder = false) {
-  const timestamp = new Date().toISOString().replace(/[-:.]/g, "").replace("T", "_").slice(0, 15);
-  const filename = "screenshot_" + timestamp + ".png";
+async function saveScreenshot(dataUrl, saveAs = true, useDownloadsFolder = false, url = "") {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+
+  const cleanUrl = cleanUrlForFilename(url);
+  const filename = `screenshot-${year}${month}${day}-${hours}${minutes}-${cleanUrl}.png`;
 
   const blob = dataUrlToBlob(dataUrl);
   const blobUrl = URL.createObjectURL(blob);
 
   try {
     let downloadId;
-    
+
     if (useDownloadsFolder) {
       // Utiliser le dossier de téléchargement par défaut
       downloadId = await downloadFile(blobUrl, filename, false, true);
@@ -488,7 +538,7 @@ async function saveScreenshot(dataUrl, saveAs = true, useDownloadsFolder = false
       // Utiliser le dernier dossier ou la boîte de dialogue saveAs
       downloadId = await downloadFile(blobUrl, filename, saveAs, false);
     }
-    
+
     return { success: true, downloadId };
   } catch (error) {
     console.error("Error saving screenshot:", error);
@@ -544,7 +594,7 @@ function getDefaultDownloadsFolder() {
         reject(chrome.runtime.lastError);
         return;
       }
-      
+
       if (downloads && downloads.length > 0) {
         // Essayer d'extraire le chemin du dossier de téléchargement
         const path = downloads[0].filename || '';
@@ -560,7 +610,7 @@ function getDefaultDownloadsFolder() {
             parts.pop(); // Retirer le nom de fichier
             downloadsPath = parts.join('\\');
           }
-          
+
           resolve(downloadsPath);
         } else {
           resolve('');
