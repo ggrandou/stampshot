@@ -119,34 +119,34 @@
     <div class="icon">
       <img src="capture-viewport.svg" alt="Capture visible page" width="20" height="20">
     </div>
-    <div class="text">Capture Visible Page</div>
+    <div class="text" id="captureVisiblePage">Capture Visible Page</div>
   </button>
-  
+
   <button id="captureFullPageBtn" class="menu-item">
     <div class="icon">
       <img src="capture-fullpage.svg" alt="Capture full page" width="20" height="20">
     </div>
-    <div class="text">Capture Full Page</div>
+    <div class="text" id="captureFullPage">Capture Full Page</div>
   </button>
-  
+
   <div class="divider"></div>
-  <div class="section-title">Save to</div>
-  
+  <div class="section-title" id="saveTo">Save to</div>
+
   <div class="dest-item">
     <input type="radio" name="destination" id="selectDestOption" class="radio-button">
-    <div class="dest-text">Select destination...</div>
+    <div class="dest-text" id="selectDestination">Select destination...</div>
   </div>
-  
+
   <div class="dest-item">
     <input type="radio" name="destination" id="currentFolderOption" class="radio-button">
     <div class="dest-text" id="currentFolderText">Current folder</div>
   </div>
-  
+
   <div class="dest-item">
     <input type="radio" name="destination" id="downloadsFolderOption" class="radio-button">
-    <div class="dest-text">Downloads folder</div>
+    <div class="dest-text" id="downloadsFolder">Downloads folder</div>
   </div>
-  
+
   <div id="status"></div>
 
   <script src="popup.js"></script>

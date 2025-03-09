@@ -6,7 +6,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   switch (request.action) {
     case "ping":
-      sendResponse({ success: true, message: "Background script is running" });
+      sendResponse({ success: true, message: chrome.i18n.getMessage('backgroundRunning') });
       return false;
     
     case "capture":
@@ -44,7 +44,7 @@ async function captureScreenshot(fullPage = true, saveAs = true, useDownloadsFol
     const tabs = await getActiveTabs();
 
     if (!tabs || tabs.length === 0) {
-      throw new Error("No active tab found");
+      throw new Error(chrome.i18n.getMessage('noActiveTab'));
     }
 
     const tab = tabs[0];
@@ -55,7 +55,7 @@ async function captureScreenshot(fullPage = true, saveAs = true, useDownloadsFol
 
     return await saveScreenshot(screenshotDataUrl, saveAs, useDownloadsFolder, tab.url);
   } catch (error) {
-    console.error("Screenshot capture failed:", error);
+    console.error(chrome.i18n.getMessage('captureFailure', [error.message]), error);
     return { success: false, message: error.message };
   }
 }
@@ -123,7 +123,7 @@ async function captureFullPageScreenshot(tab) {
 
     return canvas;
   } catch (error) {
-    console.error("Error capturing full page screenshot:", error);
+    console.error(chrome.i18n.getMessage('captureFailure', [error.message]), error);
     try {
       // Attempt to restore page state on error
       await restoreFixedElementsAndScrollbars(tab);

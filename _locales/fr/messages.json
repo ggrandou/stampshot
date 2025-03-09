@@ -1,0 +1,86 @@
+{
+  "appName": {
+    "message": "StampShot",
+    "description": "Nom de l'extension"
+  },
+  "appDesc": {
+    "message": "Prend des captures d'écran avec en-tête horodaté",
+    "description": "Description de l'extension"
+  },
+  "captureVisiblePage": {
+    "message": "Capturer la partie visible",
+    "description": "Bouton pour capturer la partie visible de la page"
+  },
+  "captureFullPage": {
+    "message": "Capturer la page entière",
+    "description": "Bouton pour capturer la page entière"
+  },
+  "saveTo": {
+    "message": "Enregistrer dans",
+    "description": "Titre de section pour les options de destination"
+  },
+  "selectDestination": {
+    "message": "Choisir la destination...",
+    "description": "Option pour sélectionner la destination lors de l'enregistrement"
+  },
+  "currentFolder": {
+    "message": "Dossier actuel",
+    "description": "Option pour enregistrer dans le dossier actuel"
+  },
+  "downloadsFolder": {
+    "message": "Dossier Téléchargements",
+    "description": "Option pour enregistrer dans le dossier Téléchargements"
+  },
+  "noFolderSelected": {
+    "message": "Aucun dossier sélectionné",
+    "description": "Message quand aucun dossier n'est sélectionné"
+  },
+  "extensionUnavailable": {
+    "message": "Extension non disponible",
+    "description": "Message d'erreur quand l'extension n'est pas disponible"
+  },
+  "backgroundRunning": {
+    "message": "Script d'arrière-plan en cours d'exécution",
+    "description": "Message confirmant que le script d'arrière-plan est en cours d'exécution"
+  },
+  "capturing": {
+    "message": "Capture en cours...",
+    "description": "Message affiché pendant la capture d'écran"
+  },
+  "screenshotSaved": {
+    "message": "Capture d'écran enregistrée !",
+    "description": "Message affiché lorsque la capture d'écran est enregistrée avec succès"
+  },
+  "error": {
+    "message": "Erreur : $ERROR$",
+    "description": "Message d'erreur générique",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "Erreur inconnue"
+      }
+    }
+  },
+  "unknownError": {
+    "message": "Erreur inconnue",
+    "description": "Message pour les erreurs inconnues"
+  },
+  "cannotConnectBackground": {
+    "message": "Impossible de se connecter au script d'arrière-plan",
+    "description": "Message d'erreur pour les problèmes de connexion au script d'arrière-plan"
+  },
+  "noActiveTab": {
+    "message": "Aucun onglet actif trouvé",
+    "description": "Message d'erreur quand aucun onglet actif n'est trouvé"
+  },
+  "captureFailure": {
+    "message": "Échec de la capture d'écran : $ERROR$",
+    "description": "Message d'erreur lorsque la capture d'écran échoue",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "Message d'erreur"
+      }
+    }
+  }
+}

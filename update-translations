@@ -1,0 +1,363 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Script to analyze JavaScript files in a Chrome/Firefox extension and
+update JSON translation files with missing entries.
+
+The script also identifies obsolete translation keys that are no longer used
+in the JavaScript code and marks them as potentially obsolete.
+
+The script uses the current directory as the extension directory
+and looks for translation files in the '_locales' subdirectory.
+"""
+
+import os
+import re
+import json
+import glob
+from collections import defaultdict
+
+
+def extract_i18n_keys(js_files):
+    """
+    Extracts all i18n keys from JavaScript files.
+
+    Args:
+        js_files: List of paths to JS files to analyze
+
+    Returns:
+        A dictionary with i18n keys and their comments if available
+    """
+    keys = {}
+    # Multiple patterns to detect different getMessage calls with string literals only
+    patterns = [
+        r"chrome\.i18n\.getMessage\(['\"]([^'\"\$][^'\"]*)['\"]",  # chrome.i18n.getMessage('key')
+        r"i18n\.getMessage\(['\"]([^'\"\$][^'\"]*)['\"]",          # i18n.getMessage('key')
+        r"getMessage\(['\"]([^'\"\$][^'\"]*)['\"]"                 # getMessage('key') - more generic
+    ]
+
+    # Pattern to exclude variable template strings like ${messageName}
+    variable_pattern = r"\$\{.*?\}"
+
+    # Special functions pattern
+    special_functions = [
+        r"i18n\.getErrorMessage\(",                        # Custom error handler function
+        r"i18n\.getCaptureFailureMessage\("                # Custom capture failure handler function
+    ]
+
+    # Pattern to detect data-i18n attributes
+    html_pattern = r'data-i18n=[\'"]([^\'"]+)[\'"]'
+
+    # Pattern to detect comments
+    comment_pattern = r"\/\/\s*(.+?)(?:\n|$)"
+
+    for file_path in js_files:
+        print(f"Analyzing file: {file_path}")
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                content = file.read()
+
+                # Process each pattern for getMessage calls
+                for pattern in patterns:
+                    # Extract all getMessage calls with this pattern
+                    matches = re.finditer(pattern, content)
+
+                    for match in matches:
+                        key = match.group(1)
+
+                        # Skip if the key contains variable template strings like ${messageName}
+                        if re.search(variable_pattern, key):
+                            continue
+
+                        pos = match.start()
+
+                        # Look for a comment on the same line or previous line
+                        line_start = content.rfind('\n', 0, pos) + 1
+                        line_prev_start = content.rfind('\n', 0, line_start - 1) + 1 if line_start > 0 else 0
+
+                        line = content[line_start:content.find('\n', pos)]
+                        prev_line = content[line_prev_start:line_start - 1] if line_start > 0 else ""
+
+                        # Look for a comment
+                        comment_match = re.search(comment_pattern, prev_line) or re.search(comment_pattern, line)
+                        description = comment_match.group(1).strip() if comment_match else f"Message for {key}"
+
+                        # Save the key and its description
+                        if key not in keys:
+                            keys[key] = description
+
+                # Process HTML attributes for data-i18n
+                html_matches = re.finditer(html_pattern, content)
+                for match in html_matches:
+                    key = match.group(1)
+                    # Skip if the key contains variable template strings
+                    if re.search(variable_pattern, key):
+                        continue
+                    if key not in keys:
+                        keys[key] = f"HTML attribute message for {key}"
+
+                # Check for special functions that imply certain keys
+                for func_pattern in special_functions:
+                    if re.search(func_pattern, content):
+                        if func_pattern == r"i18n\.getErrorMessage\(":
+                            keys["error"] = "Generic error message with placeholder"
+                            keys["unknownError"] = "Message for unknown errors"
+                        elif func_pattern == r"i18n\.getCaptureFailureMessage\(":
+                            keys["captureFailure"] = "Capture failure message with placeholder"
+                            keys["unknownError"] = "Message for unknown errors"
+
+                # Additional check for possible i18n identifiers in status messages
+                status_pattern = r"statusDiv\.textContent\s*=\s*i18n\.getMessage\(['\"]([^'\"\$][^'\"]*)['\"]"
+                status_matches = re.finditer(status_pattern, content)
+                for match in status_matches:
+                    key = match.group(1)
+                    if key not in keys:
+                        keys[key] = f"Status message for {key}"
+
+        except Exception as e:
+            print(f"Error analyzing {file_path}: {str(e)}")
+
+    return keys
+
+
+def load_locale_files():
+    """
+    Loads all localization files into a dictionary.
+    The '_locales' directory is used as the localization directory.
+
+    Returns:
+        A tuple of dictionaries: (JSON data by language, file paths by language)
+    """
+    locale_files = {}
+    locale_paths = {}
+
+    locales_dir = '_locales'
+    if not os.path.exists(locales_dir):
+        print(f"Error: The '{locales_dir}' directory does not exist in the current directory")
+        return locale_files, locale_paths
+
+    # Find all messages.json files
+    for locale_dir in os.listdir(locales_dir):
+        messages_path = os.path.join(locales_dir, locale_dir, 'messages.json')
+        if os.path.isfile(messages_path):
+            try:
+                with open(messages_path, 'r', encoding='utf-8') as f:
+                    locale_files[locale_dir] = json.load(f)
+                    locale_paths[locale_dir] = messages_path
+                    print(f"Loaded localization file for '{locale_dir}'")
+            except json.JSONDecodeError:
+                print(f"Error: Unable to decode JSON file {messages_path}")
+            except Exception as e:
+                print(f"Error reading {messages_path}: {str(e)}")
+
+    return locale_files, locale_paths
+
+
+def update_locale_files(locale_files, locale_paths, extracted_keys, reference_locale='en'):
+    """
+    Updates localization files with missing keys and marks obsolete keys.
+
+    Args:
+        locale_files: Dictionary of localization data by language code
+        locale_paths: Dictionary of file paths by language code
+        extracted_keys: Dictionary of extracted keys and their descriptions
+        reference_locale: Code of the reference language (usually 'en')
+
+    Returns:
+        Tuple of (updates by language, obsolete keys by language)
+    """
+    updates = defaultdict(int)
+    obsolete_keys = defaultdict(list)
+
+    # Make sure the reference locale exists
+    if reference_locale not in locale_files:
+        print(f"Error: Reference locale '{reference_locale}' not found")
+        return updates, obsolete_keys
+
+    # Special keys to never mark as obsolete (extension name, description, etc.)
+    protected_keys = {"appName", "appDesc"}
+
+    # Update each localization file
+    for locale_code, translations in locale_files.items():
+        is_reference = locale_code == reference_locale
+        updated = False
+
+        # Check for obsolete keys
+        for key in translations:
+            # Skip protected keys
+            if key in protected_keys:
+                continue
+
+            # Check if key is not used in any JS file
+            if key not in extracted_keys:
+                # Don't modify the message itself, just add to the report
+                obsolete_keys[locale_code].append(key)
+
+                # If we haven't already marked it as obsolete
+                marked_obsolete = False
+                if "description" in translations[key]:
+                    if not translations[key]["description"].startswith("[OBSOLETE]"):
+                        translations[key]["description"] = "[OBSOLETE] " + translations[key]["description"]
+                        marked_obsolete = True
+                else:
+                    translations[key]["description"] = "[OBSOLETE] This message appears to be unused"
+                    marked_obsolete = True
+
+                if marked_obsolete:
+                    updated = True
+
+        # Check each extracted key
+        for key, description in extracted_keys.items():
+            if key not in translations:
+                # For the reference locale, add the key with its default value
+                if is_reference:
+                    translations[key] = {
+                        "message": key,  # Use the key as default value
+                        "description": description
+                    }
+                    updated = True
+                    updates[locale_code] += 1
+                # For other locales, copy from reference but mark as to be translated
+                else:
+                    # Make sure the key exists in the reference locale
+                    if key in locale_files[reference_locale]:
+                        ref_message = locale_files[reference_locale][key]["message"]
+                        ref_description = locale_files[reference_locale][key].get("description", description)
+
+                        translations[key] = {
+                            "message": ref_message + " [TO TRANSLATE]",
+                            "description": ref_description
+                        }
+                        updated = True
+                        updates[locale_code] += 1
+                    else:
+                        # If key doesn't exist in reference, use the key as message
+                        translations[key] = {
+                            "message": key + " [TO TRANSLATE]",
+                            "description": description
+                        }
+                        updated = True
+                        updates[locale_code] += 1
+
+            # Key exists but might be marked obsolete incorrectly
+            elif "description" in translations[key] and translations[key]["description"].startswith("[OBSOLETE]"):
+                # Remove obsolete marking because the key is actually used
+                translations[key]["description"] = translations[key]["description"].replace("[OBSOLETE] ", "")
+                updated = True
+
+        # Write updates to file
+        if updated:
+            with open(locale_paths[locale_code], 'w', encoding='utf-8') as f:
+                # Use 2-space indentation to match common format
+                json.dump(translations, f, ensure_ascii=False, indent=2)
+                f.write('\n')  # Add a newline at the end
+            print(f"Updated {updates[locale_code]} entries in {locale_paths[locale_code]}")
+
+    return updates, obsolete_keys
+
+
+def find_js_files():
+    """
+    Finds all JavaScript files in the current directory and its subdirectories.
+    Excludes node_modules, dist, and _locales directories.
+
+    Returns:
+        List of paths to JS files
+    """
+    js_files = []
+
+    # Directories to exclude
+    exclude_dirs = ['node_modules', 'dist', '_locales']
+
+    for root, dirs, files in os.walk('.'):
+        # Exclude unwanted directories
+        dirs[:] = [d for d in dirs if d not in exclude_dirs]
+
+        for file in files:
+            if file.endswith('.js'):
+                js_files.append(os.path.join(root, file))
+
+    return js_files
+
+
+def find_html_files():
+    """
+    Finds all HTML files in the current directory and its subdirectories.
+    Excludes node_modules, dist, and _locales directories.
+
+    Returns:
+        List of paths to HTML files
+    """
+    html_files = []
+
+    # Directories to exclude
+    exclude_dirs = ['node_modules', 'dist', '_locales']
+
+    for root, dirs, files in os.walk('.'):
+        # Exclude unwanted directories
+        dirs[:] = [d for d in dirs if d not in exclude_dirs]
+
+        for file in files:
+            if file.endswith('.html') or file.endswith('.htm'):
+                html_files.append(os.path.join(root, file))
+
+    return html_files
+
+
+def main():
+    """
+    Main function of the script
+    """
+    print("Searching for JavaScript files in the current directory...")
+    js_files = find_js_files()
+    print(f"Found {len(js_files)} JavaScript files")
+
+    if not js_files:
+        print("No JavaScript files found. End of script.")
+        return
+
+    # Also check HTML files for data-i18n attributes
+    html_files = find_html_files()
+    if html_files:
+        print(f"Found {len(html_files)} HTML files to check for data-i18n attributes")
+        js_files.extend(html_files)
+
+    print("\nExtracting i18n keys from files...")
+    extracted_keys = extract_i18n_keys(js_files)
+    print(f"Extracted {len(extracted_keys)} unique i18n keys")
+
+    print("\nExtracted keys:")
+    for key in sorted(extracted_keys.keys()):
+        print(f"  - {key}: {extracted_keys[key]}")
+
+    print("\nLoading localization files...")
+    locale_files, locale_paths = load_locale_files()
+
+    if not locale_files:
+        print("No localization files found. End of script.")
+        return
+
+    print("\nUpdating localization files...")
+    updates, obsolete_keys = update_locale_files(locale_files, locale_paths, extracted_keys)
+
+    print("\nUpdate summary:")
+    for locale, count in updates.items():
+        print(f"  - {locale}: {count} new entries")
+
+    print("\nObsolete keys summary:")
+    has_obsolete = False
+    for locale, keys in obsolete_keys.items():
+        if keys:
+            has_obsolete = True
+            print(f"  - {locale}: {len(keys)} obsolete entries")
+            for key in keys:
+                print(f"    * {key}")
+
+    if not has_obsolete:
+        print("  No obsolete keys found.")
+
+    print("\nProcessing complete!")
+
+
+if __name__ == "__main__":
+    main()

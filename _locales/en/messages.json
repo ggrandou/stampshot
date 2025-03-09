@@ -1,0 +1,86 @@
+{
+  "appName": {
+    "message": "StampShot",
+    "description": "The name of the extension"
+  },
+  "appDesc": {
+    "message": "Takes screenshots with stamp header",
+    "description": "The description of the extension"
+  },
+  "captureVisiblePage": {
+    "message": "Capture Visible Page",
+    "description": "Button to capture the visible portion of the page"
+  },
+  "captureFullPage": {
+    "message": "Capture Full Page",
+    "description": "Button to capture the entire page"
+  },
+  "saveTo": {
+    "message": "Save to",
+    "description": "Section title for save destination options"
+  },
+  "selectDestination": {
+    "message": "Select destination...",
+    "description": "Option to select destination when saving"
+  },
+  "currentFolder": {
+    "message": "Current folder",
+    "description": "Option to save to current folder"
+  },
+  "downloadsFolder": {
+    "message": "Downloads folder",
+    "description": "Option to save to downloads folder"
+  },
+  "noFolderSelected": {
+    "message": "No folder selected",
+    "description": "Message when no folder is selected"
+  },
+  "extensionUnavailable": {
+    "message": "Extension runtime unavailable",
+    "description": "Error message when extension runtime is not available"
+  },
+  "backgroundRunning": {
+    "message": "Background script is running",
+    "description": "Message confirming background script is running"
+  },
+  "capturing": {
+    "message": "Capturing...",
+    "description": "Message shown during screenshot capture"
+  },
+  "screenshotSaved": {
+    "message": "Screenshot saved!",
+    "description": "Message shown when screenshot is successfully saved"
+  },
+  "error": {
+    "message": "Error: $ERROR$",
+    "description": "Generic error message",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "Unknown error"
+      }
+    }
+  },
+  "unknownError": {
+    "message": "Unknown error",
+    "description": "Message for unknown errors"
+  },
+  "cannotConnectBackground": {
+    "message": "Cannot connect to background script",
+    "description": "Error message for background script connection issues"
+  },
+  "noActiveTab": {
+    "message": "No active tab found",
+    "description": "Error message when no active tab is found"
+  },
+  "captureFailure": {
+    "message": "Screenshot capture failed: $ERROR$",
+    "description": "Error message when screenshot capture fails",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "Error message"
+      }
+    }
+  }
+}

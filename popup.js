@@ -14,9 +14,26 @@ document.addEventListener('DOMContentLoaded', () => {
   const downloadsFolderOption = document.getElementById('downloadsFolderOption');
   const currentFolderText = document.getElementById('currentFolderText');
 
+  // Localization - Apply translations
+  function applyTranslations() {
+    document.getElementById('captureVisiblePage').textContent = chrome.i18n.getMessage('captureVisiblePage');
+    document.getElementById('captureFullPage').textContent = chrome.i18n.getMessage('captureFullPage');
+    document.getElementById('saveTo').textContent = chrome.i18n.getMessage('saveTo');
+    document.getElementById('selectDestination').textContent = chrome.i18n.getMessage('selectDestination');
+    document.getElementById('downloadsFolder').textContent = chrome.i18n.getMessage('downloadsFolder');
+  }
+
+  // Helper function to create translated error messages
+  function getErrorMessage(error) {
+    return chrome.i18n.getMessage('error', [error || chrome.i18n.getMessage('unknownError')]);
+  }
+
+  // Apply localization
+  applyTranslations();
+
   // Check if extension runtime is available
   if (!chrome.runtime) {
-    statusDiv.textContent = 'Extension runtime unavailable';
+    statusDiv.textContent = chrome.i18n.getMessage('extensionUnavailable');
     return;
   }
 
@@ -28,22 +45,22 @@ document.addEventListener('DOMContentLoaded', () => {
         result.saveDestination = DEST_SELECT;
         chrome.storage.local.set({ saveDestination: DEST_SELECT });
       }
-      
+
       // Update radio buttons based on saved destination
       selectDestOption.checked = result.saveDestination === DEST_SELECT;
       currentFolderOption.checked = result.saveDestination === DEST_CURRENT;
       downloadsFolderOption.checked = result.saveDestination === DEST_DOWNLOADS;
-      
+
       // Update current folder text
       if (result.lastDownloadFolder) {
         const folderName = getFolderNameFromPath(result.lastDownloadFolder);
-        currentFolderText.textContent = folderName || 'Current folder';
+        currentFolderText.textContent = folderName || chrome.i18n.getMessage('currentFolder');
         currentFolderOption.disabled = !folderName;
       } else {
-        currentFolderText.textContent = 'No folder selected';
+        currentFolderText.textContent = chrome.i18n.getMessage('noFolderSelected');
         currentFolderOption.disabled = true;
       }
-      
+
       // Check if default downloads folder is accessible
       chrome.runtime.sendMessage({action: "getDefaultDownloadsFolder"}, response => {
         if (response && response.success && response.folder) {
@@ -56,7 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
           }
           downloadsFolderOption.disabled = true;
         }
-        
+
         // Update disabled state for UI
         updateDisabledState();
       });
@@ -66,7 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Extract folder name from path
   function getFolderNameFromPath(path) {
     if (!path) return null;
-    
+
     // Handle different path formats
     let folderName;
     if (path.includes('/')) {
@@ -78,7 +95,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       folderName = path;
     }
-    
+
     return folderName || null;
   }
 
@@ -101,8 +118,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Disable buttons during capture
     capturePageBtn.disabled = true;
     captureFullPageBtn.disabled = true;
-    statusDiv.textContent = 'Capturing...';
-    
+    statusDiv.textContent = chrome.i18n.getMessage('capturing');
+
     // Add active class to show which button is active
     if (fullPage) {
       captureFullPageBtn.classList.add('active');
@@ -124,14 +141,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }, (response) => {
       if (chrome.runtime.lastError) {
         console.error("Error sending message:", chrome.runtime.lastError);
-        statusDiv.textContent = `Error: ${chrome.runtime.lastError.message}`;
+        statusDiv.textContent = getErrorMessage(chrome.runtime.lastError.message);
         capturePageBtn.disabled = false;
         captureFullPageBtn.disabled = false;
         return;
       }
 
       if (response && response.success) {
-        statusDiv.textContent = 'Screenshot saved!';
+        statusDiv.textContent = chrome.i18n.getMessage('screenshotSaved');
 
         // Update UI after download completes
         setTimeout(() => {
@@ -143,7 +160,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Auto-close popup after success
         setTimeout(() => window.close(), 1500);
       } else {
-        statusDiv.textContent = `Error: ${response ? response.message : 'Unknown error'}`;
+        statusDiv.textContent = getErrorMessage(response ? response.message : null);
         capturePageBtn.disabled = false;
         captureFullPageBtn.disabled = false;
       }
@@ -154,7 +171,7 @@ document.addEventListener('DOMContentLoaded', () => {
   chrome.runtime.sendMessage({action: "ping"}, response => {
     if (chrome.runtime.lastError) {
       console.error("Background connection error:", chrome.runtime.lastError);
-      statusDiv.textContent = 'Cannot connect to background script';
+      statusDiv.textContent = chrome.i18n.getMessage('cannotConnectBackground');
       return;
     }
 
@@ -182,7 +199,7 @@ document.addEventListener('DOMContentLoaded', () => {
       chrome.storage.local.set({ saveDestination: DEST_DOWNLOADS });
     }
   });
-  
+
   // Make labels clickable for radio options
   document.querySelectorAll('.dest-item').forEach(item => {
     item.addEventListener('click', (e) => {
