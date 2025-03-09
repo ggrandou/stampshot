@@ -1,11 +1,113 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""
+Build script for StampShot Firefox extension - Creates a ZIP archive using manifest information
+"""
 
 import json
 import os
 import zipfile
 import sys
-from datetime import datetime
+import re
+import glob
+
+# Hardcoded list of files/patterns to include in the StampShot extension
+INCLUDE_FILES = [
+    'manifest.json',
+    'popup.html',
+    'popup.js',
+    'background.js',
+    'stampshot.svg',
+    'capture-viewport.svg',
+    'capture-fullpage.svg',
+    '_locales/**/*.json'
+]
+
+def get_localized_value(key, default_locale='en'):
+    """Get the actual value for an i18n message reference like __MSG_something__"""
+    match = re.match(r'^__MSG_(.+)__$', key)
+    if not match:
+        return key
+
+    message_name = match.group(1)
+
+    if not os.path.exists('_locales'):
+        print(f"Warning: i18n reference found ({key}), but no _locales directory exists")
+        return key
+
+    messages_path = os.path.join('_locales', default_locale, 'messages.json')
+    if not os.path.exists(messages_path):
+        locales = os.listdir('_locales')
+        if not locales:
+            print(f"Warning: No locales found in _locales directory")
+            return key
+
+        default_locale = locales[0]
+        messages_path = os.path.join('_locales', default_locale, 'messages.json')
+        if not os.path.exists(messages_path):
+            print(f"Warning: No messages.json found in any locale")
+            return key
+
+    try:
+        with open(messages_path, 'r', encoding='utf-8') as f:
+            messages = json.load(f)
+
+        if message_name in messages and 'message' in messages[message_name]:
+            return messages[message_name]['message']
+        else:
+            print(f"Warning: Message '{message_name}' not found in {default_locale}/messages.json")
+            return key
+    except Exception as e:
+        print(f"Error loading messages: {str(e)}")
+        return key
+
+def get_all_matching_files():
+    """
+    Get all files that match the include patterns
+    """
+    all_matching_files = set()
+
+    for pattern in INCLUDE_FILES:
+        if '**' in pattern:
+            parts = pattern.split('**')
+            base_dir = parts[0]
+            file_pattern = parts[1][1:] if parts[1].startswith('/') else parts[1]
+
+            for root, _, files in os.walk(base_dir):
+                for file in files:
+                    full_path = os.path.join(root, file)
+                    if glob.fnmatch.fnmatch(full_path, pattern):
+                        all_matching_files.add(full_path)
+        else:
+            matching_files = glob.glob(pattern, recursive=True)
+            all_matching_files.update(matching_files)
+
+    return all_matching_files
+
+def add_manifest_referenced_files(manifest):
+    """
+    Ensure all files referenced in the manifest are included
+    """
+    additional_files = []
+
+    if 'background' in manifest and 'scripts' in manifest['background']:
+        additional_files.extend(manifest['background']['scripts'])
+
+    if 'browser_action' in manifest:
+        if 'default_popup' in manifest['browser_action']:
+            additional_files.append(manifest['browser_action']['default_popup'])
+        if 'default_icon' in manifest['browser_action']:
+            if isinstance(manifest['browser_action']['default_icon'], str):
+                additional_files.append(manifest['browser_action']['default_icon'])
+            elif isinstance(manifest['browser_action']['default_icon'], dict):
+                for icon in manifest['browser_action']['default_icon'].values():
+                    additional_files.append(icon)
+
+    if 'icons' in manifest:
+        for icon in manifest['icons'].values():
+            additional_files.append(icon)
+
+    return [f for f in additional_files if os.path.exists(f)]
 
 def create_addon_zip():
     if not os.path.exists('manifest.json'):
@@ -13,45 +115,34 @@ def create_addon_zip():
         sys.exit(1)
 
     try:
-        with open('manifest.json', 'r') as f:
+        with open('manifest.json', 'r', encoding='utf-8') as f:
             manifest = json.load(f)
 
+        default_locale = manifest.get('default_locale', 'en')
+
         extension_name = manifest.get('name', 'extension')
+        if isinstance(extension_name, str) and extension_name.startswith('__MSG_'):
+            extension_name = get_localized_value(extension_name, default_locale)
+
         extension_version = manifest.get('version', '0.0')
 
         filename = f"{extension_name.lower().replace(' ', '-')}-{extension_version}.zip"
 
-        all_files = os.listdir('.')
+        print(f"Building extension: {extension_name} v{extension_version}")
+
+        files_to_add = get_all_matching_files()
+
+        manifest_files = add_manifest_referenced_files(manifest)
+        for file in manifest_files:
+            if file not in files_to_add:
+                print(f"Adding manifest-referenced file: {file}")
+                files_to_add.add(file)
 
         with zipfile.ZipFile(filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            files_to_add = [ 'manifest.json' ]
-
-            if 'background' in manifest and 'scripts' in manifest['background']:
-                files_to_add.extend(manifest['background']['scripts'])
-
-            if 'browser_action' in manifest:
-                if 'default_popup' in manifest['browser_action']:
-                    files_to_add.append(manifest['browser_action']['default_popup'])
-                if 'default_icon' in manifest['browser_action']:
-                    files_to_add.append(manifest['browser_action']['default_icon'])
-
-            if 'icons' in manifest:
-                for icon in manifest['icons'].values():
-                    files_to_add.append(icon)
-
-            for file in all_files:
-                ext = os.path.splitext(file)[1].lower()
-                if ext in ['.html', '.js', '.css', '.svg', '.png', '.jpg', '.jpeg', '.gif']:
-                    files_to_add.append(file)
-
-            files_to_add = list(set(files_to_add))
-            for file in files_to_add:
+            for file in sorted(files_to_add):
                 if os.path.exists(file) and file != filename:
                     print(f"Adding: {file}")
                     zipf.write(file)
-                else:
-                    if file != filename:
-                        print(f"Warning: File mentioned in manifest but not found: {file}")
 
         print(f"\nArchive created: {filename}")
         print(f"Files included: {len(files_to_add)}")
@@ -64,8 +155,7 @@ def create_addon_zip():
         print(f"Error: {str(e)}")
         sys.exit(1)
 
-
 if __name__ == "__main__":
-    print("Building Firefox extension ZIP archive...")
+    print("Building StampShot Firefox extension ZIP archive...")
     zip_file = create_addon_zip()
     print(f"Build completed successfully: {zip_file}")
