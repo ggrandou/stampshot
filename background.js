@@ -1,48 +1,40 @@
 // background.js - Main background script for StampShot extension
-console.log("Background script loaded successfully!");
 
 // Set up message listener
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log("Background received message:", request);
 
-  if (request.action === "ping") {
-    sendResponse({ success: true, message: "Background script is running" });
-    return false;
-  }
-  else if (request.action === "capture") {
-    captureScreenshot(request.fullPage, request.saveAs, request.useDownloadsFolder)
-      .then(result => {
-        sendResponse(result);
-      })
-      .catch(error => {
-        sendResponse({ success: false, message: error.message });
+  switch (request.action) {
+    case "ping":
+      sendResponse({ success: true, message: "Background script is running" });
+      return false;
+    
+    case "capture":
+      captureScreenshot(request.fullPage, request.saveAs, request.useDownloadsFolder)
+        .then(result => sendResponse(result))
+        .catch(error => sendResponse({ success: false, message: error.message }));
+      return true;
+    
+    case "getFolder":
+      chrome.storage.local.get(['lastDownloadFolder'], (result) => {
+        sendResponse({ folder: result.lastDownloadFolder || "" });
       });
-    return true;
-  }
-  else if (request.action === "getFolder") {
-    chrome.storage.local.get(['lastDownloadFolder'], (result) => {
-      sendResponse({ folder: result.lastDownloadFolder || "" });
-    });
-    return true;
-  }
-  else if (request.action === "getDefaultDownloadsFolder") {
-    getDefaultDownloadsFolder()
-      .then(folder => {
-        sendResponse({ success: true, folder: folder });
-      })
-      .catch(error => {
-        sendResponse({ success: false, message: error.message });
+      return true;
+    
+    case "getDefaultDownloadsFolder":
+      getDefaultDownloadsFolder()
+        .then(folder => sendResponse({ success: true, folder: folder }))
+        .catch(error => sendResponse({ success: false, message: error.message }));
+      return true;
+    
+    case "getPreferences":
+      chrome.storage.local.get(['lastDownloadFolder', 'saveDestination'], (result) => {
+        sendResponse({
+          folder: result.lastDownloadFolder || "",
+          saveDestination: result.saveDestination || "select"
+        });
       });
-    return true;
-  }
-  else if (request.action === "getPreferences") {
-    chrome.storage.local.get(['lastDownloadFolder', 'saveDestination'], (result) => {
-      sendResponse({
-        folder: result.lastDownloadFolder || "",
-        saveDestination: result.saveDestination || "select"
-      });
-    });
-    return true;
+      return true;
   }
 });
 
@@ -56,26 +48,19 @@ async function captureScreenshot(fullPage = true, saveAs = true, useDownloadsFol
     }
 
     const tab = tabs[0];
-
-    // Determine which capture method to use based on fullPage parameter
-    const captureMethod = fullPage ? captureFullPageScreenshot : capturePageScreenshot;
-
-    // Get canvas with the screenshot (either full page or visible only)
+    const captureMethod = fullPage ? captureFullPageScreenshot : captureVisiblePageScreenshot;
     const canvas = await captureMethod(tab);
-
-    // Add header with URL and date
     const canvasWithHeader = await addHeaderToScreenshot(canvas, tab);
     const screenshotDataUrl = canvasWithHeader.toDataURL('image/png');
 
     return await saveScreenshot(screenshotDataUrl, saveAs, useDownloadsFolder, tab.url);
-
   } catch (error) {
     console.error("Screenshot capture failed:", error);
     return { success: false, message: error.message };
   }
 }
 
-// Main function to capture full page screenshot
+// Capture entire page by scrolling and stitching
 async function captureFullPageScreenshot(tab) {
   try {
     const dimensions = await getPageDimensions(tab);
@@ -92,7 +77,7 @@ async function captureFullPageScreenshot(tab) {
     let currentY = 0;
     let isFirstCapture = true;
 
-    // Capture screenshot sections
+    // Capture screenshot sections by scrolling through the page
     while (currentX < width) {
       currentY = 0;
 
@@ -137,7 +122,6 @@ async function captureFullPageScreenshot(tab) {
     await restoreScrollPosition(tab);
 
     return canvas;
-
   } catch (error) {
     console.error("Error capturing full page screenshot:", error);
     try {
@@ -152,9 +136,8 @@ async function captureFullPageScreenshot(tab) {
 }
 
 // Capture only the visible part of the page
-async function capturePageScreenshot(tab) {
+async function captureVisiblePageScreenshot(tab) {
   try {
-    // Capture the visible area
     const dataUrl = await captureVisiblePart();
     const img = await loadImage(dataUrl);
 
@@ -170,18 +153,11 @@ async function capturePageScreenshot(tab) {
     return canvas;
   } catch (error) {
     console.error("Error capturing visible page screenshot:", error);
-    try {
-      // Attempt to restore page state on error
-      await restoreFixedElementsAndScrollbars(tab);
-      await restoreScrollPosition(tab);
-    } catch (e) {
-      console.error("Failed to restore page state:", e);
-    }
     throw error;
   }
 }
 
-// Promise wrappers for Chrome API functions
+// Chrome API promise wrappers
 function getActiveTabs() {
   return new Promise((resolve, reject) => {
     chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
@@ -203,13 +179,13 @@ function downloadFile(url, filename, saveAs = true, useDownloadsFolder = false) 
         saveAs: saveAs
       };
 
-      // Si on utilise le dossier de téléchargement par défaut, ne pas spécifier de chemin
+      // If using a custom folder (not default downloads folder and not saveAs dialog)
       if (!saveAs && !useDownloadsFolder && result.lastDownloadFolder) {
         let folderPath = result.lastDownloadFolder;
 
-        // Nettoyer le chemin du dossier pour qu'il soit utilisable
+        // Clean folder path to be usable
         if (folderPath) {
-          // Supprimer les chemins absolus pour n'avoir que le dossier relatif
+          // Extract relative path
           let parts = [];
           if (folderPath.includes('/')) {
             parts = folderPath.split('/');
@@ -218,11 +194,11 @@ function downloadFile(url, filename, saveAs = true, useDownloadsFolder = false) 
           }
 
           if (parts.length > 0) {
-            // Utiliser uniquement le dernier segment non vide du chemin
+            // Use only the last non-empty segment of the path
             folderPath = parts.filter(part => part.trim() !== '').pop() || '';
           }
 
-          // Ajouter le séparateur à la fin si nécessaire
+          // Add separator at the end if needed
           if (folderPath && !folderPath.endsWith('/')) {
             folderPath = folderPath + '/';
           }
@@ -272,7 +248,7 @@ function getPageDimensions(tab) {
   })`);
 }
 
-// Save and restore scroll position
+// Scroll position management
 function saveScrollPosition(tab) {
   return executeScript(tab.id, `
     window._originalScrollX = window.scrollX;
@@ -346,8 +322,8 @@ function restoreFixedElementsAndScrollbars(tab) {
       if (window._fixedElements && window._fixedElements.length > 0) {
         window._fixedElements.forEach(item => {
           if (item.element) {
-            item.element.style.display = item.originalDisplay;
-            item.element.style.position = item.originalPosition;
+            item.element.display = item.originalDisplay;
+            item.element.position = item.originalPosition;
           }
         });
       }
@@ -384,76 +360,74 @@ function loadImage(dataUrl) {
 }
 
 // Add header with URL and date to screenshot
-function addHeaderToScreenshot(canvas, tab) {
-  return new Promise(async (resolve) => {
-    const defaultFont = await getDefaultFont(tab);
-    const headerHeight = 50;
-    const newCanvas = document.createElement('canvas');
-    const ctx = newCanvas.getContext('2d');
+async function addHeaderToScreenshot(canvas, tab) {
+  const defaultFont = await getDefaultFont(tab);
+  const headerHeight = 50;
+  const newCanvas = document.createElement('canvas');
+  const ctx = newCanvas.getContext('2d');
 
-    // Set new canvas dimensions
-    newCanvas.width = canvas.width;
-    newCanvas.height = canvas.height + headerHeight;
+  // Set new canvas dimensions
+  newCanvas.width = canvas.width;
+  newCanvas.height = canvas.height + headerHeight;
 
-    // Fill header background
-    ctx.fillStyle = '#f1f1f1';
-    ctx.fillRect(0, 0, newCanvas.width, headerHeight);
-    ctx.strokeStyle = '#cccccc';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(0, 0, newCanvas.width, headerHeight);
+  // Fill header background
+  ctx.fillStyle = '#f1f1f1';
+  ctx.fillRect(0, 0, newCanvas.width, headerHeight);
+  ctx.strokeStyle = '#cccccc';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(0, 0, newCanvas.width, headerHeight);
 
-    // Configure text style
-    ctx.fillStyle = '#333333';
-    ctx.font = defaultFont;
+  // Configure text style
+  ctx.fillStyle = '#333333';
+  ctx.font = defaultFont;
 
-    // Format date
-    const now = new Date();
-    const pad = (num) => num.toString().padStart(2, '0');
+  // Format date
+  const now = new Date();
+  const pad = (num) => num.toString().padStart(2, '0');
 
-    // Format timezone offset
-    const tzOffset = now.getTimezoneOffset();
-    const tzOffsetHours = Math.abs(Math.floor(tzOffset / 60));
-    const tzOffsetMinutes = Math.abs(tzOffset % 60);
-    const tzOffsetSign = tzOffset <= 0 ? '+' : '-';
-    const tzOffsetFormatted = `${tzOffsetSign}${pad(tzOffsetHours)}:${pad(tzOffsetMinutes)}`;
+  // Format timezone offset
+  const tzOffset = now.getTimezoneOffset();
+  const tzOffsetHours = Math.abs(Math.floor(tzOffset / 60));
+  const tzOffsetMinutes = Math.abs(tzOffset % 60);
+  const tzOffsetSign = tzOffset <= 0 ? '+' : '-';
+  const tzOffsetFormatted = `${tzOffsetSign}${pad(tzOffsetHours)}:${pad(tzOffsetMinutes)}`;
 
-    // Format date as YYYY-MM-DD HH:MM:SS +/-HH:MM
-    const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())} ${tzOffsetFormatted}`;
+  // Format date as YYYY-MM-DD HH:MM:SS +/-HH:MM
+  const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())} ${tzOffsetFormatted}`;
 
-    // Calculate available width
-    const padding = 20;
-    const availableWidth = newCanvas.width - padding;
+  // Calculate available width
+  const padding = 20;
+  const availableWidth = newCanvas.width - padding;
 
-    // Truncate URL if needed
-    const urlText = tab.url;
-    const urlWidth = ctx.measureText(urlText).width;
+  // Truncate URL if needed
+  const urlText = tab.url;
+  const urlWidth = ctx.measureText(urlText).width;
 
-    let displayUrl = urlText;
-    if (urlWidth > availableWidth) {
-      let truncatedUrl = urlText;
-      const ellipsis = "...";
-      const ellipsisWidth = ctx.measureText(ellipsis).width;
+  let displayUrl = urlText;
+  if (urlWidth > availableWidth) {
+    let truncatedUrl = urlText;
+    const ellipsis = "...";
+    const ellipsisWidth = ctx.measureText(ellipsis).width;
 
-      while (ctx.measureText(truncatedUrl).width + ellipsisWidth > availableWidth && truncatedUrl.length > 0) {
-        truncatedUrl = truncatedUrl.substring(0, truncatedUrl.length - 1);
-      }
-
-      displayUrl = truncatedUrl + ellipsis;
+    while (ctx.measureText(truncatedUrl).width + ellipsisWidth > availableWidth && truncatedUrl.length > 0) {
+      truncatedUrl = truncatedUrl.substring(0, truncatedUrl.length - 1);
     }
 
-    // Calculate line height
-    const fontSize = parseInt(defaultFont.match(/\d+/)[0]) || 14;
-    const lineHeight = fontSize + 4;
+    displayUrl = truncatedUrl + ellipsis;
+  }
 
-    // Draw URL and date
-    ctx.fillText(displayUrl, 10, lineHeight);
-    ctx.fillText(date, 10, lineHeight * 2);
+  // Calculate line height
+  const fontSize = parseInt(defaultFont.match(/\d+/)[0]) || 14;
+  const lineHeight = fontSize + 4;
 
-    // Draw the original screenshot
-    ctx.drawImage(canvas, 0, headerHeight);
+  // Draw URL and date
+  ctx.fillText(displayUrl, 10, lineHeight);
+  ctx.fillText(date, 10, lineHeight * 2);
 
-    resolve(newCanvas);
-  });
+  // Draw the original screenshot
+  ctx.drawImage(canvas, 0, headerHeight);
+
+  return newCanvas;
 }
 
 // Convert data URL to Blob for download
@@ -470,19 +444,19 @@ function dataUrlToBlob(dataUrl) {
   return new Blob([ab], {type: mimeString});
 }
 
-// Nettoie l'URL pour un nom de fichier valide
+// Clean URL for valid filename
 function cleanUrlForFilename(url, maxLength = 100) {
   try {
-    // Extraire le domaine de l'URL
+    // Extract domain from URL
     let hostname = "";
     try {
       const urlObj = new URL(url);
       hostname = urlObj.hostname;
 
-      // Ajouter le chemin si présent, limité en longueur
+      // Add path if present, limit length
       if (urlObj.pathname && urlObj.pathname !== "/") {
         let path = urlObj.pathname.replace(/^\//, "");
-        // Limite la longueur totale
+        // Limit total length
         const availableLength = maxLength - hostname.length - 1;
         if (availableLength > 3 && path.length > availableLength) {
           path = path.substring(0, availableLength);
@@ -490,18 +464,18 @@ function cleanUrlForFilename(url, maxLength = 100) {
         hostname += "_" + path;
       }
     } catch (e) {
-      // En cas d'échec, utiliser l'URL brute
+      // If URL parsing fails, use raw URL
       hostname = url;
     }
 
-    // Nettoyer l'URL pour un nom de fichier valide
+    // Clean URL for a valid filename
     let cleanUrl = hostname
-      .replace(/^www\./, "")                    // Supprimer www.
-      .replace(/[^a-zA-Z0-9_\-.]/g, "_")       // Remplacer les caractères spéciaux par des underscores
-      .replace(/_{2,}/g, "_")                  // Réduire les underscores consécutifs
-      .replace(/^_+|_+$/g, "");                // Supprimer les underscores de début et fin
+      .replace(/^www\./, "")                    // Remove www.
+      .replace(/[^a-zA-Z0-9_\-.]/g, "_")       // Replace special chars with underscores
+      .replace(/_{2,}/g, "_")                  // Reduce consecutive underscores
+      .replace(/^_+|_+$/g, "");                // Remove leading/trailing underscores
 
-    // Limiter la longueur totale
+    // Limit total length
     if (cleanUrl.length > maxLength) {
       cleanUrl = cleanUrl.substring(0, maxLength);
     }
@@ -532,10 +506,10 @@ async function saveScreenshot(dataUrl, saveAs = true, useDownloadsFolder = false
     let downloadId;
 
     if (useDownloadsFolder) {
-      // Utiliser le dossier de téléchargement par défaut
+      // Use default downloads folder
       downloadId = await downloadFile(blobUrl, filename, false, true);
     } else {
-      // Utiliser le dernier dossier ou la boîte de dialogue saveAs
+      // Use last folder or saveAs dialog
       downloadId = await downloadFile(blobUrl, filename, saveAs, false);
     }
 
@@ -557,8 +531,7 @@ function getDownloadFolder() {
           const lastDownloadPath = downloads[0].filename;
           const pathParts = lastDownloadPath.split('/');
           const downloadIndex = pathParts.findIndex(part =>
-            part.toLowerCase() === 'downloads' ||
-            part.toLowerCase() === 'téléchargements');
+            part.toLowerCase() === 'downloads');
 
           if (downloadIndex !== -1) {
             const downloadRoot = pathParts.slice(0, downloadIndex + 1).join('/');
@@ -596,18 +569,18 @@ function getDefaultDownloadsFolder() {
       }
 
       if (downloads && downloads.length > 0) {
-        // Essayer d'extraire le chemin du dossier de téléchargement
+        // Try to extract downloads folder path
         const path = downloads[0].filename || '';
         if (path) {
-          // Extraire le dossier de téléchargement du chemin
+          // Extract download folder path
           let downloadsPath = '';
           if (path.includes('/')) {
             const parts = path.split('/');
-            parts.pop(); // Retirer le nom de fichier
+            parts.pop(); // Remove filename
             downloadsPath = parts.join('/');
           } else if (path.includes('\\')) {
             const parts = path.split('\\');
-            parts.pop(); // Retirer le nom de fichier
+            parts.pop(); // Remove filename
             downloadsPath = parts.join('\\');
           }
 
@@ -620,6 +593,16 @@ function getDefaultDownloadsFolder() {
       }
     });
   });
+}
+
+// Get default font from the page
+function getDefaultFont(tab) {
+  return executeScript(tab.id, `
+    (function() {
+      const bodyStyles = window.getComputedStyle(document.body);
+      return bodyStyles.font || (bodyStyles.fontSize + ' ' + bodyStyles.fontFamily);
+    })();
+  `).then(result => result || '14px Arial, sans-serif');
 }
 
 // Listen for download completion
@@ -660,13 +643,3 @@ chrome.downloads.onChanged.addListener((downloadDelta) => {
     }
   });
 });
-
-// Get default font from the page
-function getDefaultFont(tab) {
-  return executeScript(tab.id, `
-    (function() {
-      const bodyStyles = window.getComputedStyle(document.body);
-      return bodyStyles.font || (bodyStyles.fontSize + ' ' + bodyStyles.fontFamily);
-    })();
-  `).then(result => result || '14px Arial, sans-serif');
-}

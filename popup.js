@@ -1,6 +1,9 @@
 // popup.js - UI controller for StampShot extension
 document.addEventListener('DOMContentLoaded', () => {
-  console.log("Popup script loaded");
+  // Constants for destination options
+  const DEST_SELECT = 'select';
+  const DEST_CURRENT = 'current';
+  const DEST_DOWNLOADS = 'downloads';
 
   // UI Elements
   const capturePageBtn = document.getElementById('capturePageBtn');
@@ -11,18 +14,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const downloadsFolderOption = document.getElementById('downloadsFolderOption');
   const currentFolderText = document.getElementById('currentFolderText');
 
-  // Destination options
-  const DEST_SELECT = 'select';
-  const DEST_CURRENT = 'current';
-  const DEST_DOWNLOADS = 'downloads';
-
   // Check if extension runtime is available
   if (!chrome.runtime) {
     statusDiv.textContent = 'Extension runtime unavailable';
     return;
   }
 
-  // Load saved preferences
+  // Load saved preferences and update UI
   function updatePreferences() {
     chrome.storage.local.get(['saveDestination', 'lastDownloadFolder'], (result) => {
       // Set default destination if not set
@@ -46,12 +44,12 @@ document.addEventListener('DOMContentLoaded', () => {
         currentFolderOption.disabled = true;
       }
       
-      // Vérifier que le dossier de téléchargement par défaut est accessible
+      // Check if default downloads folder is accessible
       chrome.runtime.sendMessage({action: "getDefaultDownloadsFolder"}, response => {
         if (response && response.success && response.folder) {
           downloadsFolderOption.disabled = false;
         } else {
-          // Si le dossier par défaut n'est pas accessible, désactiver cette option
+          // If default folder is not accessible, disable this option
           if (downloadsFolderOption.checked) {
             selectDestOption.checked = true;
             chrome.storage.local.set({ saveDestination: DEST_SELECT });
@@ -59,7 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
           downloadsFolderOption.disabled = true;
         }
         
-        // Mettre à jour les classes disabled
+        // Update disabled state for UI
         updateDisabledState();
       });
     });
@@ -84,53 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
     return folderName || null;
   }
 
-  // Verify background script is accessible
-  chrome.runtime.sendMessage({action: "ping"}, response => {
-    if (chrome.runtime.lastError) {
-      console.error("Background connection error:", chrome.runtime.lastError);
-      statusDiv.textContent = 'Cannot connect to background script';
-      return;
-    }
-
-    if (response && response.success) {
-      console.log("Background connection successful");
-      updatePreferences();
-    }
-  });
-
-  // Save preferences when destination option changes
-  selectDestOption.addEventListener('change', () => {
-    if (selectDestOption.checked) {
-      chrome.storage.local.set({ saveDestination: DEST_SELECT });
-    }
-  });
-
-  currentFolderOption.addEventListener('change', () => {
-    if (currentFolderOption.checked) {
-      chrome.storage.local.set({ saveDestination: DEST_CURRENT });
-    }
-  });
-
-  downloadsFolderOption.addEventListener('change', () => {
-    if (downloadsFolderOption.checked) {
-      chrome.storage.local.set({ saveDestination: DEST_DOWNLOADS });
-    }
-  });
-  
-  // Rendre les étiquettes cliquables pour les options radio
-  document.querySelectorAll('.dest-item').forEach(item => {
-    item.addEventListener('click', (e) => {
-      const radio = item.querySelector('input[type="radio"]');
-      if (radio && !radio.disabled) {
-        radio.checked = true;
-        // Déclencher l'événement change manuellement
-        const event = new Event('change');
-        radio.dispatchEvent(event);
-      }
-    });
-  });
-  
-  // Mettre à jour les classes disabled quand les options changent
+  // Update disabled classes when options change
   function updateDisabledState() {
     document.querySelectorAll('.dest-item').forEach(item => {
       const radio = item.querySelector('input[type="radio"]');
@@ -144,9 +96,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Function to handle screenshot capture
+  // Handle screenshot capture
   function captureScreenshot(fullPage) {
-    // Disable both buttons during capture
+    // Disable buttons during capture
     capturePageBtn.disabled = true;
     captureFullPageBtn.disabled = true;
     statusDiv.textContent = 'Capturing...';
@@ -198,13 +150,53 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Handle visible part screenshot capture
-  capturePageBtn.addEventListener('click', () => {
-    captureScreenshot(false);
+  // Verify background script is accessible
+  chrome.runtime.sendMessage({action: "ping"}, response => {
+    if (chrome.runtime.lastError) {
+      console.error("Background connection error:", chrome.runtime.lastError);
+      statusDiv.textContent = 'Cannot connect to background script';
+      return;
+    }
+
+    if (response && response.success) {
+      console.log("Background connection successful");
+      updatePreferences();
+    }
   });
 
-  // Handle full page screenshot capture
-  captureFullPageBtn.addEventListener('click', () => {
-    captureScreenshot(true);
+  // Save preferences when destination option changes
+  selectDestOption.addEventListener('change', () => {
+    if (selectDestOption.checked) {
+      chrome.storage.local.set({ saveDestination: DEST_SELECT });
+    }
   });
+
+  currentFolderOption.addEventListener('change', () => {
+    if (currentFolderOption.checked) {
+      chrome.storage.local.set({ saveDestination: DEST_CURRENT });
+    }
+  });
+
+  downloadsFolderOption.addEventListener('change', () => {
+    if (downloadsFolderOption.checked) {
+      chrome.storage.local.set({ saveDestination: DEST_DOWNLOADS });
+    }
+  });
+  
+  // Make labels clickable for radio options
+  document.querySelectorAll('.dest-item').forEach(item => {
+    item.addEventListener('click', (e) => {
+      const radio = item.querySelector('input[type="radio"]');
+      if (radio && !radio.disabled) {
+        radio.checked = true;
+        // Manually trigger change event
+        const event = new Event('change');
+        radio.dispatchEvent(event);
+      }
+    });
+  });
+
+  // Button event listeners
+  capturePageBtn.addEventListener('click', () => captureScreenshot(false));
+  captureFullPageBtn.addEventListener('click', () => captureScreenshot(true));
 });
