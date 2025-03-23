@@ -1,23 +1,30 @@
 {
-  "manifest_version": 2,
+  "manifest_version": 3,
   "name": "__MSG_appName__",
   "version": "1.1",
   "description": "__MSG_appDesc__",
   "default_locale": "en",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "{0e804ee7-06ad-401c-96af-5758022c5caa}"
+    }
+  },
   "permissions": [
     "activeTab",
     "downloads",
-    "<all_urls>",
     "tabs",
-    "storage"
+    "storage",
+    "scripting"
   ],
-  "browser_action": {
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "action": {
     "default_popup": "popup.html",
     "default_icon": "stampshot.svg"
   },
   "background": {
-    "scripts": ["background.js"],
-    "persistent": true
+    "scripts": ["background.js"]
   },
   "icons": {
     "48": "stampshot.svg"

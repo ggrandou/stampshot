@@ -1,4 +1,5 @@
-// popup.js - UI controller for StampShot extension
+// popup.js - UI controller
+
 document.addEventListener('DOMContentLoaded', () => {
   // Constants for destination options
   const DEST_SELECT = 'select';
@@ -84,14 +85,15 @@ document.addEventListener('DOMContentLoaded', () => {
   function getFolderNameFromPath(path) {
     if (!path) return null;
 
-    // Handle different path formats
+    path = path.trim();
+
     let folderName;
     if (path.includes('/')) {
-      const parts = path.split('/');
-      folderName = parts[parts.length - 1] || parts[parts.length - 2];
+      const parts = path.split('/').filter(part => part.trim() !== '');
+      folderName = parts.length > 0 ? parts[parts.length - 1] : null;
     } else if (path.includes('\\')) {
-      const parts = path.split('\\');
-      folderName = parts[parts.length - 1] || parts[parts.length - 2];
+      const parts = path.split('\\').filter(part => part.trim() !== '');
+      folderName = parts.length > 0 ? parts[parts.length - 1] : null;
     } else {
       folderName = path;
     }
@@ -150,15 +152,17 @@ document.addEventListener('DOMContentLoaded', () => {
       if (response && response.success) {
         statusDiv.textContent = chrome.i18n.getMessage('screenshotSaved');
 
-        // Update UI after download completes
         setTimeout(() => {
-          updatePreferences();
+          chrome.storage.local.get(['saveDestination', 'lastDownloadFolder'], (result) => {
+            console.log("Updated preferences after capture:", result);
+            updatePreferences();
+          });
           capturePageBtn.classList.remove('active');
           captureFullPageBtn.classList.remove('active');
         }, 1000);
 
         // Auto-close popup after success
-        setTimeout(() => window.close(), 1500);
+        setTimeout(() => window.close(), 2000);
       } else {
         statusDiv.textContent = getErrorMessage(response ? response.message : null);
         capturePageBtn.disabled = false;

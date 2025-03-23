@@ -1,4 +1,4 @@
-// background.js - Main background script for StampShot extension
+// background.js - Service worker
 
 // Set up message listener
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -8,25 +8,23 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     case "ping":
       sendResponse({ success: true, message: chrome.i18n.getMessage('backgroundRunning') });
       return false;
-    
+
     case "capture":
-      captureScreenshot(request.fullPage, request.saveAs, request.useDownloadsFolder)
-        .then(result => sendResponse(result))
-        .catch(error => sendResponse({ success: false, message: error.message }));
+      handleCaptureRequest(request, sendResponse);
       return true;
-    
+
     case "getFolder":
       chrome.storage.local.get(['lastDownloadFolder'], (result) => {
         sendResponse({ folder: result.lastDownloadFolder || "" });
       });
       return true;
-    
+
     case "getDefaultDownloadsFolder":
       getDefaultDownloadsFolder()
         .then(folder => sendResponse({ success: true, folder: folder }))
         .catch(error => sendResponse({ success: false, message: error.message }));
       return true;
-    
+
     case "getPreferences":
       chrome.storage.local.get(['lastDownloadFolder', 'saveDestination'], (result) => {
         sendResponse({
@@ -37,6 +35,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return true;
   }
 });
+
+// Handler for capture requests that manages async operations
+async function handleCaptureRequest(request, sendResponse) {
+  try {
+    const result = await captureScreenshot(
+      request.fullPage,
+      request.saveAs,
+      request.useDownloadsFolder
+    );
+    sendResponse(result);
+  } catch (error) {
+    console.error(chrome.i18n.getMessage('captureFailure', [error.message]), error);
+    sendResponse({ success: false, message: error.message });
+  }
+}
 
 // Main capture function for both full page and visible screenshots
 async function captureScreenshot(fullPage = true, saveAs = true, useDownloadsFolder = false) {
@@ -226,60 +239,89 @@ function downloadFile(url, filename, saveAs = true, useDownloadsFolder = false) 
   });
 }
 
-// Page state management
-function executeScript(tabId, code) {
-  return new Promise((resolve, reject) => {
-    chrome.tabs.executeScript(tabId, { code }, (results) => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-        return;
-      }
-      resolve(results && results[0]);
-    });
-  });
-}
-
 // Get page dimensions for screenshot
-function getPageDimensions(tab) {
-  return executeScript(tab.id, `({
-    width: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
-    height: Math.max(document.documentElement.scrollHeight, document.body.scrollHeight),
-    devicePixelRatio: window.devicePixelRatio || 1
-  })`);
+async function getPageDimensions(tab) {
+  const func = () => {
+    return {
+      width: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
+      height: Math.max(document.documentElement.scrollHeight, document.body.scrollHeight),
+      devicePixelRatio: window.devicePixelRatio || 1
+    };
+  };
+
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: func
+  });
+
+  return result.result;
 }
 
 // Scroll position management
-function saveScrollPosition(tab) {
-  return executeScript(tab.id, `
+async function saveScrollPosition(tab) {
+  const func = () => {
     window._originalScrollX = window.scrollX;
     window._originalScrollY = window.scrollY;
-    [window._originalScrollX, window._originalScrollY];
-  `);
+    return [window._originalScrollX, window._originalScrollY];
+  };
+
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: func
+  });
+
+  return result.result;
 }
 
-function restoreScrollPosition(tab) {
-  return executeScript(tab.id, `
+async function restoreScrollPosition(tab) {
+  const func = () => {
     if (typeof window._originalScrollX !== 'undefined' &&
         typeof window._originalScrollY !== 'undefined') {
       window.scrollTo(window._originalScrollX, window._originalScrollY);
     }
-  `);
+  };
+
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: func
+  });
+
+  return result.result;
 }
 
-function getScrollPosition(tab) {
-  return executeScript(tab.id, `({
-    x: window.scrollX,
-    y: window.scrollY
-  })`);
+async function getScrollPosition(tab) {
+  const func = () => {
+    return {
+      x: window.scrollX,
+      y: window.scrollY
+    };
+  };
+
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: func
+  });
+
+  return result.result;
 }
 
-function scrollTo(tab, x, y) {
-  return executeScript(tab.id, `window.scrollTo(${x}, ${y});`);
+async function scrollTo(tab, x, y) {
+  const func = (x, y) => {
+    window.scrollTo(x, y);
+  };
+
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: func,
+    args: [x, y]
+  });
+
+  return result ? result.result : null;
 }
 
 // Hide fixed elements and scrollbars for clean screenshots
-function hideFixedElementsAndScrollbars(tab) {
-  return executeScript(tab.id, `
+async function hideFixedElementsAndScrollbars(tab) {
+  const func = () => {
     if (!window._originalScrollbarStyles) {
       window._originalScrollbarStyles = {};
       window._originalScrollbarStyles.html = document.documentElement.style.cssText;
@@ -309,12 +351,19 @@ function hideFixedElementsAndScrollbars(tab) {
       }
     });
 
-    true
-  `);
+    return true;
+  };
+
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: func
+  });
+
+  return result.result;
 }
 
-function restoreFixedElementsAndScrollbars(tab) {
-  return executeScript(tab.id, `
+async function restoreFixedElementsAndScrollbars(tab) {
+  const func = () => {
     if (window._originalScrollbarStyles) {
       document.documentElement.style.cssText = window._originalScrollbarStyles.html;
       document.body.style.cssText = window._originalScrollbarStyles.body;
@@ -332,8 +381,15 @@ function restoreFixedElementsAndScrollbars(tab) {
       delete window._fixedElements;
     }
 
-    true;
-  `);
+    return true;
+  };
+
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: func
+  });
+
+  return result.result;
 }
 
 // Capture visible part of the tab
@@ -596,13 +652,23 @@ function getDefaultDownloadsFolder() {
 }
 
 // Get default font from the page
-function getDefaultFont(tab) {
-  return executeScript(tab.id, `
-    (function() {
-      const bodyStyles = window.getComputedStyle(document.body);
-      return bodyStyles.font || (bodyStyles.fontSize + ' ' + bodyStyles.fontFamily);
-    })();
-  `).then(result => result || '14px Arial, sans-serif');
+async function getDefaultFont(tab) {
+  const func = () => {
+    const bodyStyles = window.getComputedStyle(document.body);
+    return bodyStyles.font || (bodyStyles.fontSize + ' ' + bodyStyles.fontFamily);
+  };
+
+  try {
+    const [result] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: func
+    });
+
+    return result.result || '14px Arial, sans-serif';
+  } catch (error) {
+    console.error("Error getting default font:", error);
+    return '14px Arial, sans-serif';
+  }
 }
 
 // Listen for download completion
@@ -615,24 +681,32 @@ chrome.downloads.onChanged.addListener((downloadDelta) => {
             const download = downloads[0];
 
             if (download.filename) {
-              const downloadRoot = await getDownloadFolder();
+              let folderPath = '';
 
-              if (downloadRoot && isInDownloadFolder(download.filename, downloadRoot)) {
-                let folderPath = '';
+              if (download.filename.includes('/')) {
+                const parts = download.filename.split('/');
+                parts.pop();
+                folderPath = parts.length > 0 ? parts[parts.length - 1] : '';
 
-                if (download.filename.includes('/')) {
-                  const parts = download.filename.split('/');
-                  if (parts.length >= 2) {
-                    folderPath = parts[parts.length - 2];
-                  }
+                if (!folderPath && parts.length > 0) {
+                  folderPath = parts.join('/');
                 }
+              } else if (download.filename.includes('\\')) {
+                const parts = download.filename.split('\\');
+                parts.pop();
+                folderPath = parts.length > 0 ? parts[parts.length - 1] : '';
 
-                if (folderPath) {
-                  chrome.storage.local.set({
-                    lastDownloadFolder: folderPath,
-                    saveDestination: 'current'  // Auto-select current folder option
-                  });
+                if (!folderPath && parts.length > 0) {
+                  folderPath = parts.join('\\');
                 }
+              }
+
+              if (folderPath) {
+                console.log("Saving folder path:", folderPath);
+                chrome.storage.local.set({
+                  lastDownloadFolder: folderPath,
+                  saveDestination: 'current'  // Auto-select current folder option
+                });
               }
             }
           }
