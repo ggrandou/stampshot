@@ -15,6 +15,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const downloadsFolderOption = document.getElementById('downloadsFolderOption');
   const currentFolderText = document.getElementById('currentFolderText');
 
+  // Extension version
+  let extensionVersion = '';
+
   // Localization - Apply translations
   function applyTranslations() {
     document.getElementById('captureVisiblePage').textContent = chrome.i18n.getMessage('captureVisiblePage');
@@ -31,6 +34,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Apply localization
   applyTranslations();
+
+  // Get extension version from manifest
+  chrome.runtime.getManifest && chrome.runtime.getManifest().version
+    ? extensionVersion = chrome.runtime.getManifest().version
+    : extensionVersion = '';
+
+  // Set default status to version number
+  function setDefaultStatus() {
+    if (!statusDiv.textContent || statusDiv.textContent.trim() === '') {
+      // Création sécurisée de l'élément span au lieu d'utiliser innerHTML
+      statusDiv.textContent = ''; // Effacer le contenu existant
+      const versionSpan = document.createElement('span');
+      versionSpan.className = 'version-info';
+      versionSpan.textContent = 'v' + extensionVersion;
+      statusDiv.appendChild(versionSpan);
+    }
+  }
+
+  // Initial setup of version in status
+  setDefaultStatus();
 
   // Check if extension runtime is available
   if (!chrome.runtime) {
@@ -113,6 +136,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
     });
+
+    // Restore default status if no message is currently shown
+    setDefaultStatus();
   }
 
   // Handle screenshot capture
@@ -167,6 +193,11 @@ document.addEventListener('DOMContentLoaded', () => {
         statusDiv.textContent = getErrorMessage(response ? response.message : null);
         capturePageBtn.disabled = false;
         captureFullPageBtn.disabled = false;
+
+        // Restore default status after a delay
+        setTimeout(() => {
+          setDefaultStatus();
+        }, 3000);
       }
     });
   }
